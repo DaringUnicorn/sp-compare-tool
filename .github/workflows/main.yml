@@ -1,4 +1,4 @@
-name: Windows Exe Yapici
+name: Windows Klasor Build
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     - name: Python Kur
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11' # Senin versiyonun 3.11 olduğu için
+        python-version: '3.11'
 
     - name: Kutuphaneleri Yukle
       run: |
@@ -22,18 +22,14 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Hooks Klasoru Olustur
+    - name: Uygulamayi Derle (Klasor Modu)
+      # --onedir kullaniyoruz (Symantec dostu)
+      # --noconsole sildim ki hata verirse gorelim, istersen eklersin
       run: |
-        mkdir hooks
-        echo "from PyInstaller.utils.hooks import copy_metadata; datas = copy_metadata('streamlit')" > hooks/hook-streamlit.py
+        pyinstaller --onedir --additional-hooks-dir=./hooks --add-data "app.py;." --hidden-import streamlit --clean --name sp-compare-tool run_app.py
 
-    - name: EXE Olustur (Build)
-      # app.py ile run_app.py ayni klasorde olmali
-      run: |
-        pyinstaller --onefile --additional-hooks-dir=./hooks --add-data "app.py;." --hidden-import streamlit --clean --name sp-compare-tool run_app.py
-
-    - name: Dosyayi Yukle (Artifact)
+    - name: Klasoru Paketle ve Yukle
       uses: actions/upload-artifact@v4
       with:
-        name: sp-compare-tool-windows
-        path: dist/sp-compare-tool.exe
+        name: SP-Compare-Tool-Paketi
+        path: dist/sp-compare-tool/
