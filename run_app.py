@@ -9,11 +9,11 @@ def resolve_path(path):
     return os.path.join(basedir, path)
 
 if __name__ == "__main__":
-    # app.py senin ana dosyanın adı olmalı!
+    # Aşağıdaki 'app.py' senin ana kod dosyanın adıdır.
     sys.argv = [
         "streamlit",
         "run",
-        resolve_path("app.py"), 
+        resolve_path("app.py"),
         "--global.developmentMode=false",
     ]
     sys.exit(stcli.main())
