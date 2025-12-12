@@ -1,4 +1,4 @@
-name: Windows Exe Yapici
+name: Symantec Savar (Embeddable)
 
 on:
   push:
@@ -11,29 +11,48 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Python Kur
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11' # Senin versiyonun 3.11 olduğu için
-
-    - name: Kutuphaneleri Yukle
+    - name: Klasor Yapısını Hazırla
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+        mkdir FinalPaket
+        copy app.py FinalPaket/
+        copy requirements.txt FinalPaket/
+        # Eğer varsa hooks veya diğer dosyaları da kopyalayabilirsin ama gerek yok
 
-    - name: Hooks Klasoru Olustur
+    - name: Resmi Python Embeddable İndir (3.11.9)
       run: |
-        mkdir hooks
-        echo "from PyInstaller.utils.hooks import copy_metadata; datas = copy_metadata('streamlit')" > hooks/hook-streamlit.py
+        cd FinalPaket
+        curl -L -o python.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+        powershell Expand-Archive python.zip -DestinationPath .
+        del python.zip
 
-    - name: EXE Olustur (Build)
-      # app.py ile run_app.py ayni klasorde olmali
+    - name: Python Ayarlarını Çöz (Pip'i Aktif Et)
+      # Embeddable sürümde pip kapalı gelir, onu açıyoruz.
       run: |
-        pyinstaller --onefile --additional-hooks-dir=./hooks --add-data "app.py;." --hidden-import streamlit --clean --name sp-compare-tool run_app.py
+        cd FinalPaket
+        # python311._pth dosyasındaki '#import site' satırını açıyoruz
+        (Get-Content python311._pth).replace('#import site', 'import site') | Set-Content python311._pth
 
-    - name: Dosyayi Yukle (Artifact)
+    - name: Pip ve Kütüphaneleri Yükle
+      # Burası biraz hacky ama en garanti yol.
+      run: |
+        cd FinalPaket
+        curl -o get-pip.py https://bootstrap.pypa.io/get-pip.py
+        .\python.exe get-pip.py
+        .\python.exe -m pip install -r requirements.txt
+        # Streamlit için gereken ekstra ayar
+        .\python.exe -m pip install streamlit
+
+    - name: Başlatıcı (BAT) Dosyasını Oluştur
+      # Kullanıcının tıklayacağı dosya bu
+      run: |
+        cd FinalPaket
+        echo @echo off > baslat.bat
+        echo echo Uygulama Hazirlaniyor... Lutfen Bekleyin... >> baslat.bat
+        echo .\python.exe -m streamlit run app.py --global.developmentMode=false --server.headless=true >> baslat.bat
+        echo pause >> baslat.bat
+
+    - name: Paketi Zip'le ve Yükle
       uses: actions/upload-artifact@v4
       with:
-        name: sp-compare-tool-windows
-        path: dist/sp-compare-tool.exe
+        name: Sp-Compare-Tool-Symantecsiz
+        path: FinalPaket/
