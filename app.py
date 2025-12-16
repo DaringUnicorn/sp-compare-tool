@@ -429,7 +429,7 @@ def main_app():
                     render_breadcrumb(
                         server=src_dbs,
                         database=sel_src_db,
-                        schema=sel_src_display
+                        sp_name=sel_src_display
                     )
             else:
                 st.error("Kaynak Bağlantısı Koptu!")
@@ -454,7 +454,7 @@ def main_app():
                     render_breadcrumb(
                         server=src_dbs,
                         database=sel_src_db,
-                        schema=sel_src_display
+                        sp_name=sel_src_display
                     )
 
             else:
