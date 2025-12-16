@@ -4,6 +4,8 @@ import pyodbc
 import difflib
 import streamlit.components.v1 as components
 import time
+import streamlit.web.cli as stcli
+import os, sys
 
 # --- Sayfa ve Güvenlik Ayarları ---
 st.set_page_config(layout="wide", page_title="SQL SP Compare Tool v2.0")
@@ -266,6 +268,52 @@ def highlight_diff(text1, text2, width=130):
 
     return custom_css + html_content
 
+def render_breadcrumb(server, database, sp_name):
+    """
+    Ekranın üstüne Server > DB > Schema > SP hiyerarşisini çizer.
+    """
+
+    st.markdown(f"""
+                <style>
+                    .breadcrumb {{
+                        background-color: #f0f2f6;
+                        padding: 10px 15px;
+                        border-radius: 8px;
+                        margin-bottom: 20px;
+                        font-family: 'Source Sans Pro', sans-serif;
+                        font-size: 16px;
+                        color: #31333F;
+                    }}
+                
+                    .breadcrumb span {{
+                        display: inline-flex;
+                        align-items: center;
+                    }}
+                
+                    .breadcrumb .separator {{
+                        margin: 0 10px;
+                        color: #ff4b4b; 
+                        font-weight: bold;
+                    }}
+                
+                    .breadcrumb .current {{
+                        font-weight: bold;
+                        color: #000;
+                        text-decoration: underline;
+                    }}
+                </style>
+
+                <div class="breadcrumb">
+                    <span>{server}</span>
+                    <span class="separator">➜</span>
+                    <span>{database}</span>
+                    <span class="separator">➜</span>
+                    <span class="current">{sp_name}</span>
+                </div>
+
+                """, unsafe_allow_html=True)
+
+
 
 # --- 3. Ana Uygulama Mantığı ---
 def main_app():
@@ -334,6 +382,7 @@ def main_app():
             sel_tgt_db = st.selectbox("Target DB Seç", tgt_dbs, key="sel_tgt_db") if tgt_dbs else None
 
 
+
         # Docker Uyarısı
         st.info("Docker kullanıyorsanız IP yerine 'host.docker.internal' yazın.")
 
@@ -375,6 +424,13 @@ def main_app():
                     src_schema = row_src['SchemaName']
                     src_name = row_src['SpName']
 
+                # Breadcrumb
+                if sel_src_display:
+                    render_breadcrumb(
+                        server=src_dbs,
+                        database=sel_src_db,
+                        schema=sel_src_display
+                    )
             else:
                 st.error("Kaynak Bağlantısı Koptu!")
 
@@ -392,6 +448,14 @@ def main_app():
                     row_tgt = df_tgt[df_tgt['DisplayText'] == sel_tgt_display].iloc[0]
                     tgt_schema = row_tgt['SchemaName']
                     tgt_name = row_tgt['SpName']
+                
+                # Breadcrumb 
+                if sel_src_display:
+                    render_breadcrumb(
+                        server=src_dbs,
+                        database=sel_src_db,
+                        schema=sel_src_display
+                    )
 
             else:
                 st.error("Hedef Bağlantısı Koptu!")
@@ -418,7 +482,7 @@ def main_app():
                         st.markdown("### Karşılaştırma Raporu")
                         components.html(html_diff, height=1000, scrolling=True)
 
-                    
+  
     else:
         # DB seçilmediyse boş ekrana mesaj
         st.info("Lütfen sol menüden Kaynak ve Hedef veritabanlarını seçerek başlayın.")
