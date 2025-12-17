@@ -342,7 +342,7 @@ def main_app():
 if not st.session_state['authenticated']:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("<h2 style='text-align: center;'>🔐 Güvenli Giriş</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>Güvenli Giriş</h2>", unsafe_allow_html=True)
         u = st.text_input("Kullanıcı Adı")
         p = st.text_input("Şifre", type="password")
         if st.button("Giriş Yap", type="primary"): check_login(u, p)
