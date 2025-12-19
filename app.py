@@ -4,6 +4,7 @@ import pyodbc
 import difflib
 import streamlit.components.v1 as components
 import time
+import streamlit.web.cli as stcli
 import os, sys
 
 # --- Sayfa ve Güvenlik Ayarları ---
@@ -12,6 +13,12 @@ st.set_page_config(layout="wide", page_title="SQL SP Compare Tool v2.0")
 # Oturum Durumu Kontrolü (Session State)
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
+
+# DB Listelerini hafızada tutmak için state tanımları
+if 'src_db_list' not in st.session_state:
+    st.session_state['src_db_list'] = []
+if 'tgt_db_list' not in st.session_state:
+    st.session_state['tgt_db_list'] = []
 
 # --- CSS Stilleri ---
 st.markdown("""
@@ -60,11 +67,13 @@ def check_login(username, password):
 
 def logout():
     st.session_state["authenticated"] = False
+    # Çıkışta listeleri de temizleyelim
+    st.session_state['src_db_list'] = []
+    st.session_state['tgt_db_list'] = []
     st.rerun()
 
 
 # --- 2. Veritabanı Bağlantı Fonksiyonları ---
-
 def get_connection(server, database, username, password):
     """
     SQL Server Bağlantı Oluşturucu
@@ -73,7 +82,8 @@ def get_connection(server, database, username, password):
     """
     # Mevcut sürücüleri al
     available_drivers = pyodbc.drivers()
-    
+    # for i in available_drivers: print("Mevcut Driver'ler:\n", i) # Debug için
+
     # Öncelik sırasına göre denenecek sürücüler
     candidate_drivers = [
         "ODBC Driver 17 for SQL Server",
@@ -81,7 +91,7 @@ def get_connection(server, database, username, password):
         "ODBC Driver 13 for SQL Server",
         "SQL Server Native Client 11.0",
         "SQL Server Native Client 10.0",
-        "SQL Server"  # En eski ve en garanti olan (Windows default)
+        "SQL Server" # En eski ve en garanti olan (Windows default)
     ]
 
     selected_driver = None
@@ -116,10 +126,10 @@ def get_connection(server, database, username, password):
 
         except Exception as e:
             # Bu sürücü olmadı, sıradakine geç
-            print(f"DEBUG: '{driver_name}' başarısız oldu. Sebep: {e}")
+            # print(f"DEBUG: '{driver_name}' başarısız oldu. Sebep: {e}")
             last_error = e
             continue
-            
+    
     # Loga yaz ama kullanıcıya detay gösterme (Güvenlik)
     print(f"KRİTİK HATA: Hiçbir sürücü ile bağlanılamadı. Son hata: {last_error}")
     return None
@@ -172,8 +182,9 @@ def get_sp_content_secure(conn, schema, sp_name):
     """
     *** KRİTİK GÜVENLİK FONKSİYONU ***
     Parametreli sorgu (Parameterized Query) kullanılarak SQL Injection %100 engellendi.
+    f-string yerine ? placeholder kullanıyoruz.
     """
-    query = """
+    query= """
     SELECT m.definition 
     FROM sys.sql_modules m
     INNER JOIN sys.objects o ON m.object_id = o.object_id
@@ -196,25 +207,25 @@ def get_sp_content_secure(conn, schema, sp_name):
 def highlight_diff(text1, text2, width=130):
     """
     İki metin arasındaki farkı HTML formatında boyar.
-    CSS DÜZELTİLDİ: Tablo artık slider genişliğine uyuyor ve renkler doğru çalışıyor.
+    *** DÜZELTME YAPILDI ***: CSS sınıfları ve tablo genişlik ayarları düzeltildi.
     """
     if not text1: text1 = ""
     if not text2: text2 = ""
 
-    # Slider'dan gelen 'width' değerine göre satırları böl
+    # Slider değerine göre satırları böl
     d = difflib.HtmlDiff(wrapcolumn=width)
 
     # Tabloyu oluştur
     html_content = d.make_file(text1.splitlines(), text2.splitlines(), context=False, numlines=3)
 
-    # CSS Enjeksiyonu (Renklendirme ve Düzen burada yapılıyor)
+    # CSS Enjeksiyonu (Renklendirme burada yapılıyor)
     custom_css = """
     <style>
-    /* Tablo Ayarları */
+    /* Tablo Ayarları: Kodları sıkıştırma, ekrana yay */
     table.diff {
         font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
         font-size: 13px;
-        width: auto; /* Fixed yerine Auto yaptık ki slider çalışsın */
+        width: auto; /* Fixed yerine Auto yaptık, slider çalışsın diye */
         min-width: 100%;
         border-collapse: collapse;
         border: 1px solid #ddd;
@@ -223,7 +234,7 @@ def highlight_diff(text1, text2, width=130):
     table.diff td {
         padding: 2px 5px;
         vertical-align: top;
-        white-space: pre-wrap; /* Satırların slider değerine göre alt satıra inmesini sağlar */
+        white-space: pre-wrap; /* Satırların taşmasını engelle, alta indir */
     }
 
     .diff_header {
@@ -231,15 +242,14 @@ def highlight_diff(text1, text2, width=130):
         color: #999;
         text-align: right;
         width: 30px;
-        min-width: 30px;
         user-select: none;
     }
 
-    /* YEŞİL (Eklenen) */
+    /* YEŞİL (Eklenen) - İki tonlu renk */
     .diff_add { background-color: #e6ffcc; color: #1a1a1a; }
     .diff_add span { background-color: #acf2db; font-weight: bold; }
 
-    /* KIRMIZI (Silinen) - Düzeltildi: Sınıf ismi .diff_sub yapıldı */
+    /* KIRMIZI (Silinen) - İki tonlu renk (DÜZELTİLDİ: sınıf ismi .diff_sub olmalı) */
     .diff_sub { background-color: #ffebe9; color: #1a1a1a; }
     .diff_sub span { background-color: #fdb8c0; text-decoration: line-through; }
 
@@ -255,8 +265,8 @@ def render_breadcrumb(server, database, sp_name):
     """
     Ekranın üstüne Server > DB > Schema > SP hiyerarşisini çizer.
     """
-    # server değişkeni liste gelirse stringe çevir (Güvenlik önlemi)
-    server_str = str(server) if not isinstance(server, list) else "Server Listesi"
+    # Server bir liste ise string gösterimi
+    server_str = str(server) if not isinstance(server, list) else "Server List"
 
     st.markdown(f"""
     <style>
@@ -308,7 +318,8 @@ def main_app():
 
     st.divider()
 
-    # --- SIDEBAR (Bağlantı Ayarları) ---
+    # --- SIDEBAR (SADECE Sunucu Bağlantı Ayarları) ---
+    # Not: DB seçimi buradan kaldırıldı, ana ekrana taşındı.
     with st.sidebar:
         st.header("Bağlantı Ayarları")
 
@@ -318,18 +329,15 @@ def main_app():
             src_user = st.text_input("Source User", key="src_user")
             src_pass = st.text_input("Source Pass", type="password", key="src_pass")
 
-            # DB Listele
+            # DB Listele Butonu
             if st.button("Veritabanlarını Getir (Source)", key="btn_src_fetch"):
                 with st.spinner("Bağlanılıyor..."):
                     dbs = get_databases(src_ip, src_user, src_pass)
                     if dbs:
                         st.session_state["src_db_list"] = dbs
-                        st.success("Bağlandı")
+                        st.success("Bağlandı, Liste Güncellendi")
                     else:
                         st.error("Bağlanılamadı!")
-
-            src_dbs = st.session_state.get("src_db_list", [])
-            sel_src_db = st.selectbox("Source DB Seç", src_dbs, key="sel_src_db") if src_dbs else None
 
         # --- Hedef (Target) ---
         with st.expander("2. Hedef Sunucu (Target)", expanded=False):
@@ -343,13 +351,9 @@ def main_app():
                     dbs = get_databases(tgt_ip, tgt_user, tgt_pass)
                     if dbs:
                         st.session_state["tgt_db_list"] = dbs
-                        st.success("Bağlandı")
+                        st.success("Bağlandı, Liste Güncellendi")
                     else:
                         st.error("Bağlanılamadı!")
-
-            # DB Dropdown
-            tgt_dbs = st.session_state.get("tgt_db_list", [])
-            sel_tgt_db = st.selectbox("Target DB Seç", tgt_dbs, key="sel_tgt_db") if tgt_dbs else None
 
         # Docker Uyarısı
         st.info("Docker kullanıyorsanız IP yerine 'host.docker.internal' yazın.")
@@ -367,18 +371,26 @@ def main_app():
             help="Kod satırlarının kaç karakterden sonra alt satıra geçeceğini belirler."
         )
 
-    # --- Orta Alan (SP Seçimi ve Compare) ---
+    # --- Orta Alan (DB -> SP Seçimi ve Compare) ---
     
-    # Sadece iki tarafta da DB seçildiyse göster
-    if sel_src_db and sel_tgt_db:
-        col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-        # --- Sol Taraf SP Listesi ---
-        with col1:
-            st.subheader(f"Kaynak: {sel_src_db}")
+    # --- Sol Taraf (Kaynak) ---
+    with col1:
+        st.subheader("Kaynak Seçimi")
+        
+        # 1. Adım: DB Seçimi (Listeden)
+        src_dbs = st.session_state.get("src_db_list", [])
+        sel_src_db = st.selectbox("Source DB Seç", src_dbs, key="sel_src_db") if src_dbs else None
+        
+        sel_src_display = None
+        src_schema, src_name = None, None
+        
+        # 2. Adım: DB Seçildiyse SP'leri Getir
+        if sel_src_db:
+            # Bağlantıyı buradaki IP ve seçilen DB ile kuruyoruz
             conn_src = get_connection(src_ip, sel_src_db, src_user, src_pass)
             
-            sel_src_display = None
             if conn_src:
                 df_src = get_all_sps_secure(conn_src)
                 # Kullanıcıya listeden seçtir
@@ -390,17 +402,32 @@ def main_app():
                     src_schema = row_src['SchemaName']
                     src_name = row_src['SpName']
 
-                    # Breadcrumb
-                    render_breadcrumb(server=src_ip, database=sel_src_db, sp_name=src_name)
+                    # Breadcrumb fonksiyonunu koruduk
+                    render_breadcrumb(
+                        server=src_ip, 
+                        database=sel_src_db, 
+                        sp_name=src_name
+                    )
             else:
-                st.error("Kaynak Bağlantısı Koptu!")
+                st.error("Kaynak Veritabanına Bağlanılamadı.")
+        else:
+            st.info("Lütfen soldan 'Veritabanlarını Getir' diyerek başlayın.")
 
-        # --- Sağ Taraf SP Listesi ---
-        with col2:
-            st.subheader(f"Hedef: {sel_tgt_db}")
+    # --- Sağ Taraf (Hedef) ---
+    with col2:
+        st.subheader("Hedef Seçimi")
+        
+        # 1. Adım: DB Seçimi
+        tgt_dbs = st.session_state.get("tgt_db_list", [])
+        sel_tgt_db = st.selectbox("Target DB Seç", tgt_dbs, key="sel_tgt_db") if tgt_dbs else None
+
+        sel_tgt_display = None
+        tgt_schema, tgt_name = None, None
+
+        # 2. Adım: DB Seçildiyse SP'leri Getir
+        if sel_tgt_db:
             conn_tgt = get_connection(tgt_ip, sel_tgt_db, tgt_user, tgt_pass)
-            
-            sel_tgt_display = None
+
             if conn_tgt:
                 df_tgt = get_all_sps_secure(conn_tgt)
                 sel_tgt_display = st.selectbox("Hedef SP Seçiniz", df_tgt['DisplayText'], key="final_tgt_sel")
@@ -411,36 +438,50 @@ def main_app():
                     tgt_name = row_tgt['SpName']
                     
                     # Breadcrumb
-                    render_breadcrumb(server=tgt_ip, database=sel_tgt_db, sp_name=tgt_name)
+                    render_breadcrumb(
+                        server=tgt_ip, 
+                        database=sel_tgt_db, 
+                        sp_name=tgt_name
+                    )
             else:
-                st.error("Hedef Bağlantısı Koptu!")
+                st.error("Hedef Veritabanına Bağlanılamadı.")
+        else:
+            st.info("Lütfen soldan 'Veritabanlarını Getir' diyerek başlayın.")
 
-        # --- Karşılaştırma Butonu ---
-        st.divider()
-        if st.button("Karşılaştırmayı Başlat", type="primary", use_container_width=True):
-            if conn_src and conn_tgt and sel_src_display and sel_tgt_display:
+    # --- Karşılaştırma Butonu ve Rapor ---
+    st.divider()
+    if st.button("Karşılaştırmayı Başlat", type="primary", use_container_width=True):
+
+        # Her iki taraftan da seçim yapılmış mı?
+        if sel_src_db and sel_tgt_db and sel_src_display and sel_tgt_display:
+            
+            # Tekrar bağlantı açıp kodları çekiyoruz (Güvenlik ve taze veri için)
+            conn_src_final = get_connection(src_ip, sel_src_db, src_user, src_pass)
+            conn_tgt_final = get_connection(tgt_ip, sel_tgt_db, tgt_user, tgt_pass)
+
+            if conn_src_final and conn_tgt_final:
                 with st.spinner("Kodlar Analiz Ediliyor...."):
                     # Güvenli fonksiyonla kodları çek
-                    code_src = get_sp_content_secure(conn_src, src_schema, src_name)
-                    code_tgt = get_sp_content_secure(conn_tgt, tgt_schema, tgt_name)
+                    code_src = get_sp_content_secure(conn_src_final, src_schema, src_name)
+                    code_tgt = get_sp_content_secure(conn_tgt_final, tgt_schema, tgt_name)
 
                     if not code_src and not code_tgt:
                         st.warning("İki taraftan da kod çekilemedi. İzinleri kontrol edin")
                     else:
-                        # Diff Al ve Göster
+                        # Diff Al ve Göster (Wrap width slider değeri burada kullanılıyor)
                         html_diff = highlight_diff(code_src, code_tgt, width=wrap_width)
                         st.markdown("### Karşılaştırma Raporu")
                         components.html(html_diff, height=1000, scrolling=True)
             else:
-                st.warning("Lütfen her iki taraftan da geçerli bir SP seçiniz.")
-
-    else:
-        # DB seçilmediyse boş ekrana mesaj
-        st.info("Lütfen sol menüden Kaynak ve Hedef veritabanlarını seçerek başlayın.")
+                st.error("Kodları çekerken bağlantı hatası oluştu.")
+        else:
+            # Eksik seçim varsa uyar
+            st.warning("Lütfen sol ve sağ panelden Veritabanı ve Prosedür seçimlerini tamamlayın.")
 
 
 # --- 4. Giriş Ekranı (Login Gate) ---
 if not st.session_state['authenticated']:
+
     # Basit ve şık bir login ekranı ortalaması
     col_spacer1, col_login, col_spacer2 = st.columns([1, 2, 1])
 
